@@ -20,7 +20,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     env:
-      FAILURE_TYPE: ${{ inputs.failure_type || github.event.inputs.failure_type || 'none' }}
+      FAILURE_TYPE: ${{ inputs.failure_type }}
 
     steps:
       - name: Checkout
