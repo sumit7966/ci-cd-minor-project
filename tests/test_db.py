@@ -5,7 +5,9 @@ import os
 import unittest
 from unittest.mock import patch
 
+# pyrefly: ignore [missing-import]
 from sqlalchemy import create_engine
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.data_collection.schemas import PipelineRunRecord

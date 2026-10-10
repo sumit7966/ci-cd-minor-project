@@ -1,22 +1,29 @@
 """FastAPI router for CI/CD pipeline execution run queries, syncing, and statistics."""
 
 from typing import Any, Dict, List, Optional
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+# pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
+# pyrefly: ignore [missing-import]
 from ..data_collection.github_collector import (
     GitHubAPIError,
     MissingTokenError,
     RateLimitExceededError,
     RepositoryNotFoundError,
 )
+# pyrefly: ignore [missing-import]
 from ..data_collection.schemas import PipelineRunRecord
+# pyrefly: ignore [missing-import]
 from ..data_collection.storage import sync_github_runs_to_db
+# pyrefly: ignore [missing-import]
 from ..db.repository import (
     get_pipeline_run_by_id,
     get_pipeline_runs,
     get_pipeline_stats,
 )
+# pyrefly: ignore [missing-import]
 from ..db.session import get_db
 
 router = APIRouter(prefix="/api/pipelines", tags=["pipelines"])
