@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from .api.analytics import router as analytics_router
 from .api.pipelines import router as pipelines_router
+from .api.predictions import router as predictions_router
 from .db.session import get_engine, init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +51,7 @@ app.add_middleware(
 # Register API Routers (analytics before pipelines so /analytics is matched prior to /{run_id})
 app.include_router(analytics_router)
 app.include_router(pipelines_router)
+app.include_router(predictions_router)
 
 
 @app.get("/", summary="API Root", tags=["health"])
@@ -71,6 +73,8 @@ def root() -> Dict[str, Any]:
             "analytics_trends": "GET /api/pipelines/analytics/trends",
             "analytics_failures": "GET /api/pipelines/analytics/failures",
             "analytics_duration": "GET /api/pipelines/analytics/duration",
+            "predictions": "POST /api/predictions",
+            "prediction_status": "GET /api/predictions/status",
             "health": "GET /health",
         },
     }
