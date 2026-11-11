@@ -7,5 +7,5 @@ pipeline optimization recommendations.
 ## Team
 
 - Tarun Kumar Vashisth - Member 1
-- Lakshay Yadav - Member 2
-- Sumit - Member 3
+- Sumit - Member 2
+- Lakshay Yadav - Member 3

@@ -32,5 +32,5 @@ pipeline bottlenecks, and provides optimization recommendations.
 ## Team
 
 - Tarun Kumar Vashisth — Member 1: CI/CD & Data Collection
-- Lakshay Yadav — Member 2: ML Failure Prediction
-- Sumit — Member 3: Optimization & Dashboard
+- Sumit — Member 2: Machine Learning and Failure Prediction
+- Lakshay Yadav — Member 3: Optimization Engine and Dashboard
