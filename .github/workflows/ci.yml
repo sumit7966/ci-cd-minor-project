@@ -1,0 +1,58 @@
+name: CI Pipeline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      failure_type:
+        description: 'Type of intentional failure to simulate for dataset generation'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - 'none'
+          - 'test_failure'
+          - 'build_failure'
+          - 'dependency_failure'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      FAILURE_TYPE: ${{ inputs.failure_type }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          if [ "$FAILURE_TYPE" = "dependency_failure" ]; then
+            echo "Error: Simulating controlled dependency installation failure" >&2
+            exit 1
+          fi
+          python -m pip install --upgrade pip
+          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Build
+        run: |
+          if [ "$FAILURE_TYPE" = "build_failure" ]; then
+            echo "Error: Simulating controlled build validation failure" >&2
+            exit 1
+          fi
+          python -m compileall .
+
+      - name: Test
+        run: |
+          if [ "$FAILURE_TYPE" = "test_failure" ]; then
+            echo "Error: Simulating controlled test suite failure" >&2
+            exit 1
+          fi
+          pytest
