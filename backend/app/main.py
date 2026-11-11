@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from optimization.api import router as optimization_router
+
 from .api.analytics import router as analytics_router
 from .api.pipelines import router as pipelines_router
 from .db.session import get_engine, init_db
@@ -50,6 +52,7 @@ app.add_middleware(
 # Register API Routers (analytics before pipelines so /analytics is matched prior to /{run_id})
 app.include_router(analytics_router)
 app.include_router(pipelines_router)
+app.include_router(optimization_router)
 
 
 @app.get("/", summary="API Root", tags=["health"])
@@ -71,6 +74,9 @@ def root() -> Dict[str, Any]:
             "analytics_trends": "GET /api/pipelines/analytics/trends",
             "analytics_failures": "GET /api/pipelines/analytics/failures",
             "analytics_duration": "GET /api/pipelines/analytics/duration",
+            "optimization": "GET /api/optimization",
+            "bottlenecks": "GET /api/bottlenecks",
+            "recommendations": "GET /api/recommendations",
             "health": "GET /health",
         },
     }

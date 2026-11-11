@@ -83,12 +83,18 @@ class BottleneckDetector:
                     "reasons": reasons
                 })
                 
-        return {
+        result: Dict[str, Any] = {
             "average_pipeline_duration": avg_pipeline_duration,
             "stage_metrics": stage_metrics,
             "slowest_stage": slowest_stage_name,
-            "potential_bottlenecks": potential_bottlenecks
+            "potential_bottlenecks": potential_bottlenecks,
         }
+        if not stage_metrics:
+            result["message"] = (
+                "Stage-level duration breakdown is unavailable; only run-level "
+                "pipeline duration and failed_stage telemetry are stored."
+            )
+        return result
         
     def identify_slow_stages(self, threshold_seconds: float = 300.0) -> List[str]:
         """Legacy compatibility wrapper for older tests/recommender."""

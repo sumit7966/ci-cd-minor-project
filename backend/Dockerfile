@@ -11,8 +11,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application package
+# Copy backend application package and optimization module
 COPY backend ./backend
+COPY optimization ./optimization
 
 EXPOSE 8000
 

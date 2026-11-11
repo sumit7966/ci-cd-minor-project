@@ -15,6 +15,5 @@ ENV/
 node_modules/
 frontend/
 ml/
-optimization/
 tests/
 *.md

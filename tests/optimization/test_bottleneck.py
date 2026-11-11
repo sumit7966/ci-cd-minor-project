@@ -1,5 +1,7 @@
 import unittest
+from datetime import datetime, timedelta, timezone
 from optimization.bottleneck import BottleneckDetector
+from optimization.models import PipelineRun
 from tests.optimization.fixtures import generate_synthetic_dataset
 
 class TestBottleneckDetector(unittest.TestCase):
@@ -58,6 +60,23 @@ class TestBottleneckDetector(unittest.TestCase):
         self.assertIn("build", bottleneck_stages)
         # Unit tests fails > 20% of the time
         self.assertIn("unit_tests", bottleneck_stages)
+
+    def test_analyze_runs_without_stage_telemetry(self):
+        base = datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("101", "success", 30.0, base, stages=[]),
+            PipelineRun("102", "failure", 50.0, base + timedelta(minutes=5), stages=[], failed_stage="test"),
+        ]
+        result = BottleneckDetector(runs).analyze()
+
+        self.assertEqual(result["average_pipeline_duration"], 40.0)
+        self.assertEqual(result["stage_metrics"], {})
+        self.assertIsNone(result["slowest_stage"])
+        self.assertEqual(result["potential_bottlenecks"], [])
+        self.assertEqual(
+            result["message"],
+            "Stage-level duration breakdown is unavailable; only run-level pipeline duration and failed_stage telemetry are stored.",
+        )
 
 if __name__ == '__main__':
     unittest.main()

@@ -30,12 +30,13 @@ class OptimizationRecommendation:
     priority: str
     recommendation_type: str
     
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Optional[str]]:
+        """Convert recommendation instance to JSON-serializable dictionary."""
         return {
             "title": self.title,
             "description": self.description,
             "reason": self.reason,
-            "affected_stage": self.affected_stage or "pipeline",
+            "affected_stage": self.affected_stage,
             "priority": self.priority,
             "recommendation_type": self.recommendation_type
         }

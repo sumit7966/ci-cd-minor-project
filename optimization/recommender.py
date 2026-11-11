@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict, List
 from .models import PipelineRun, OptimizationRecommendation
 from .analyzer import FailureAnalyzer
 from .bottleneck import BottleneckDetector
@@ -63,19 +63,7 @@ class OptimizationRecommender:
                 ))
 
         # Rule 4: The same stage fails frequently.
-        failing_stages = self.analyzer.get_frequently_failing_stages()
-        for stage, count in failing_stages:
-            total_execs = stage_metrics.get(stage, {}).get("total_executions", 0)
-            failure_rate = (count / total_execs) if total_execs > 0 else 0
-            if failure_rate > 0.2 and total_execs >= 3:
-                recommendations.append(OptimizationRecommendation(
-                    title="Investigate Stage Reliability",
-                    description=f"The '{stage}' stage is failing frequently.",
-                    reason=f"Stage has a failure rate of {failure_rate*100:.1f}% ({count} failures in {total_execs} runs).",
-                    affected_stage=stage,
-                    priority="high",
-                    recommendation_type="reliability"
-                ))
+        self._add_reliability_recommendations(recommendations, stage_metrics)
 
         # Rule 5: Pipeline duration is increasing over time.
         if len(self.runs) >= 3:
@@ -94,3 +82,42 @@ class OptimizationRecommender:
                     ))
                     
         return recommendations
+
+    def _add_reliability_recommendations(
+        self,
+        recommendations: List[OptimizationRecommendation],
+        stage_metrics: Dict[str, Any],
+    ) -> None:
+        """Add Rule 4 reliability recommendations using stage counts or a run-level fallback."""
+        total_runs = len(self.runs)
+        failing_stages = self.analyzer.get_frequently_failing_stages()
+
+        for stage, count in failing_stages:
+            if stage_metrics:
+                total_execs = stage_metrics.get(stage, {}).get("total_executions", 0)
+                failure_rate = (count / total_execs) if total_execs > 0 else 0.0
+                if failure_rate > 0.2 and total_execs >= 3:
+                    recommendations.append(OptimizationRecommendation(
+                        title="Investigate Stage Reliability",
+                        description=f"The '{stage}' stage is failing frequently.",
+                        reason=f"Stage has a failure rate of {failure_rate*100:.1f}% ({count} failures in {total_execs} runs).",
+                        affected_stage=stage,
+                        priority="high",
+                        recommendation_type="reliability"
+                    ))
+            elif total_runs >= 3:
+                recurrence_rate = count / total_runs
+                if recurrence_rate > 0.2:
+                    recommendations.append(OptimizationRecommendation(
+                        title="Investigate Stage Reliability",
+                        description=f"The '{stage}' stage repeatedly appears as the pipeline failed stage.",
+                        reason=(
+                            f"Pipeline-level failed-stage recurrence rate is {recurrence_rate * 100:.1f}% "
+                            f"({count} failed runs attributed to '{stage}' across {total_runs} eligible runs; "
+                            f"this is a pipeline-level recurrence rate, not a true stage failure rate because "
+                            f"per-stage execution counts are unavailable)."
+                        ),
+                        affected_stage=stage,
+                        priority="high",
+                        recommendation_type="reliability"
+                    ))
