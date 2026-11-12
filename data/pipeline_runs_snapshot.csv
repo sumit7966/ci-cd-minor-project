@@ -1,0 +1,15 @@
+run_id,repository,branch,commit_sha,status,conclusion,workflow_name,event,duration_seconds,failed_stage,failure_type,created_at,synced_at
+1001,sumit7966/ci-cd-minor-project,main,a1b2c3d4e5f6789012345678901234567890abcd,completed,success,CI Pipeline,push,45,"",none,2026-09-09 10:00:00+00,2026-09-12 16:06:47.260741+00
+1002,sumit7966/ci-cd-minor-project,member1,b2c3d4e5f6a1789012345678901234567890bcde,completed,failure,CI Pipeline,workflow_dispatch,15,dependency,dependency_failure,2026-09-09 10:15:00+00,2026-09-12 16:06:47.263195+00
+1003,sumit7966/ci-cd-minor-project,member1,c3d4e5f6a1b2789012345678901234567890cdef,completed,failure,CI Pipeline,workflow_dispatch,28,build,build_failure,2026-09-09 10:30:00+00,2026-09-12 16:06:47.265314+00
+1004,sumit7966/ci-cd-minor-project,member1,d4e5f6a1b2c3789012345678901234567890defa,completed,failure,CI Pipeline,workflow_dispatch,34,test,test_failure,2026-09-09 10:45:00+00,2026-09-12 16:06:47.267504+00
+34322148388,sumit7966/ci-cd-minor-project,main,e0199b38a5cb1d220db9661673089f2f81f78041,completed,success,CI Pipeline,push,13,"",none,2026-09-09 07:05:49+00,2026-09-12 17:13:20.419882+00
+34322309387,sumit7966/ci-cd-minor-project,main,e0199b38a5cb1d220db9661673089f2f81f78041,completed,failure,CI Pipeline,workflow_dispatch,13,test,test_failure,2026-09-09 07:07:48+00,2026-09-12 17:13:20.417807+00
+34322528848,sumit7966/ci-cd-minor-project,main,e0199b38a5cb1d220db9661673089f2f81f78041,completed,success,CI Pipeline,workflow_dispatch,18,"",none,2026-09-09 07:10:30+00,2026-09-12 17:13:20.415644+00
+34322655257,sumit7966/ci-cd-minor-project,member1,9f9aca1fda5f1ba18dff8a0c4b12513c3db93c9f,completed,success,CI Pipeline,workflow_dispatch,16,"",none,2026-09-09 07:12:05+00,2026-09-12 17:13:20.413255+00
+34323202058,sumit7966/ci-cd-minor-project,member1,ef279765640aa0c473500204137a38349486f3df,completed,success,CI Pipeline,push,18,"",none,2026-09-09 07:18:43+00,2026-09-12 17:13:20.411264+00
+34323268775,sumit7966/ci-cd-minor-project,member1,ef279765640aa0c473500204137a38349486f3df,completed,failure,CI Pipeline,workflow_dispatch,13,build,build_failure,2026-09-09 07:19:33+00,2026-09-12 17:13:20.409078+00
+34323428604,sumit7966/ci-cd-minor-project,member1,ef279765640aa0c473500204137a38349486f3df,completed,failure,CI Pipeline,workflow_dispatch,8,dependency,dependency_failure,2026-09-09 07:21:29+00,2026-09-12 17:13:20.407035+00
+34334265730,sumit7966/ci-cd-minor-project,member1,394f31f286ce0a5f12bec2e49608774b33b69b2e,completed,failure,CI Pipeline,push,20,test,test_failure,2026-09-09 09:21:46+00,2026-09-12 17:13:20.40504+00
+34336240052,sumit7966/ci-cd-minor-project,member1,1b62c3204dafba9125a418388df2ced9bee7ad50,completed,failure,CI Pipeline,push,17,test,test_failure,2026-09-09 09:42:45+00,2026-09-12 17:13:20.402874+00
+34336749990,sumit7966/ci-cd-minor-project,member1,1d80c4c8163369e9a75f399ac4f737372afe07eb,completed,success,CI Pipeline,push,15,"",none,2026-09-09 09:48:14+00,2026-09-12 17:13:20.400822+00

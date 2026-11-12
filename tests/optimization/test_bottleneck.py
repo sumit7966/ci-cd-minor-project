@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 from optimization.bottleneck import BottleneckDetector
-from optimization.models import PipelineRun
+from optimization.models import PipelineRun, StageRun
 from tests.optimization.fixtures import generate_synthetic_dataset
 
 class TestBottleneckDetector(unittest.TestCase):
@@ -77,6 +77,85 @@ class TestBottleneckDetector(unittest.TestCase):
             result["message"],
             "Stage-level duration breakdown is unavailable; only run-level pipeline duration and failed_stage telemetry are stored.",
         )
+        self.assertEqual(result["telemetry_coverage"]["total_runs_analyzed"], 2)
+        self.assertEqual(result["telemetry_coverage"]["runs_with_stage_telemetry"], 0)
+        self.assertEqual(result["telemetry_coverage"]["runs_without_stage_telemetry"], 2)
+
+    def test_skipped_and_incomplete_stages_excluded_from_duration_and_failure_rate(self):
+        base = datetime(2026, 10, 15, 10, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("201", "success", 20.0, base, stages=[
+                StageRun("build", 10.0, "success", duration_available=True),
+                StageRun("test", 0.0, "skipped", duration_available=False, skipped_count=1),
+            ]),
+            PipelineRun("202", "failure", 25.0, base + timedelta(minutes=1), stages=[
+                StageRun("build", 20.0, "failure", "build_failure", duration_available=True),
+                StageRun("test", 0.0, "skipped", duration_available=False, skipped_count=1),
+            ]),
+            PipelineRun("203", "failure", 30.0, base + timedelta(minutes=2), stages=[
+                StageRun("build", 0.0, "skipped", duration_available=False, skipped_count=1),
+                StageRun("lint", 0.0, "incomplete", duration_available=False, incomplete_count=1),
+            ]),
+        ]
+        result = BottleneckDetector(runs).analyze()
+        stage_metrics = result["stage_metrics"]
+
+        # 'build' had 2 completed executions (10s, 20s) and 1 skipped -> avg = 15.0s, max = 20.0s
+        # Denominator is 2 executions, 1 failure -> failure_rate = 50.0% (not 1/3 = 33%)
+        build_metrics = stage_metrics["build"]
+        self.assertEqual(build_metrics["total_executions"], 2)
+        self.assertEqual(build_metrics["valid_duration_count"], 2)
+        self.assertEqual(build_metrics["average_stage_duration"], 15.0)
+        self.assertEqual(build_metrics["maximum_stage_duration"], 20.0)
+        self.assertEqual(build_metrics["stage_failure_count"], 1)
+        self.assertEqual(build_metrics["stage_failure_rate"], 0.5)
+        self.assertEqual(build_metrics["skipped_count"], 1)
+
+        # 'test' had 0 executions, 2 skipped -> durations must be None (not 0.0)
+        self.assertNotIn("test", stage_metrics)
+
+        # 'lint' had 0 executions, 1 incomplete -> not in stage_metrics
+        self.assertNotIn("lint", stage_metrics)
+
+    def test_valid_zero_second_executed_stages_included_as_valid_observations(self):
+        base = datetime(2026, 10, 15, 11, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("301", "success", 10.0, base, stages=[
+                StageRun("setup", 0.0, "success", duration_available=True),
+                StageRun("compile", 6.0, "success", duration_available=True),
+            ]),
+            PipelineRun("302", "success", 12.0, base + timedelta(minutes=1), stages=[
+                StageRun("setup", 0.0, "success", duration_available=True),
+                StageRun("compile", 8.0, "success", duration_available=True),
+            ]),
+        ]
+        result = BottleneckDetector(runs).analyze()
+        setup_metrics = result["stage_metrics"]["setup"]
+        self.assertEqual(setup_metrics["total_executions"], 2)
+        self.assertEqual(setup_metrics["valid_duration_count"], 2)
+        self.assertEqual(setup_metrics["average_stage_duration"], 0.0)
+        self.assertEqual(setup_metrics["maximum_stage_duration"], 0.0)
+
+        compile_metrics = result["stage_metrics"]["compile"]
+        self.assertEqual(compile_metrics["average_stage_duration"], 7.0)
+        # compile is slowest stage (7.0 > 0.0)
+        self.assertEqual(result["slowest_stage"], "compile")
+
+    def test_telemetry_coverage_with_mixed_runs(self):
+        base = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("401", "success", 10.0, base, stages=[
+                StageRun("build", 4.0, "success", duration_available=True),
+            ], has_stage_telemetry=True),
+            PipelineRun("402", "success", 15.0, base + timedelta(minutes=1), stages=[], has_stage_telemetry=False),
+            PipelineRun("403", "failure", 20.0, base + timedelta(minutes=2), stages=[], has_stage_telemetry=False, failed_stage="test"),
+        ]
+        result = BottleneckDetector(runs).analyze()
+        cov = result["telemetry_coverage"]
+        self.assertEqual(cov["total_runs_analyzed"], 3)
+        self.assertEqual(cov["runs_with_stage_telemetry"], 1)
+        self.assertEqual(cov["runs_without_stage_telemetry"], 2)
+        self.assertEqual(cov["stage_executions_analyzed"], 1)
 
 if __name__ == '__main__':
     unittest.main()

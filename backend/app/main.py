@@ -12,6 +12,7 @@ from optimization.api import router as optimization_router
 
 from .api.analytics import router as analytics_router
 from .api.pipelines import router as pipelines_router
+from .api.predictions import router as predictions_router
 from .db.session import get_engine, init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,7 @@ app.add_middleware(
 app.include_router(analytics_router)
 app.include_router(pipelines_router)
 app.include_router(optimization_router)
+app.include_router(predictions_router)
 
 
 @app.get("/", summary="API Root", tags=["health"])
@@ -77,6 +79,8 @@ def root() -> Dict[str, Any]:
             "optimization": "GET /api/optimization",
             "bottlenecks": "GET /api/bottlenecks",
             "recommendations": "GET /api/recommendations",
+            "predictions": "POST /api/predictions",
+            "prediction_status": "GET /api/predictions/status",
             "health": "GET /health",
         },
     }

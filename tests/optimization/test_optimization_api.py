@@ -9,7 +9,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from backend.app.data_collection.schemas import PipelineRunRecord
+from backend.app.data_collection.schemas import (
+    PipelineJobRecord,
+    PipelineRunRecord,
+    PipelineStepRecord,
+)
 from backend.app.db.repository import upsert_pipeline_runs
 from backend.app.db.session import Base, get_db
 from backend.app.main import app as main_app
@@ -236,6 +240,141 @@ class TestOptimizationAPI(unittest.TestCase):
         response = self.client.get("/api/optimization")
         self.assertEqual(response.status_code, 500)
         self.assertIn("Database connection failed", response.json()["detail"])
+
+    def test_api_with_real_stage_telemetry_e2e(self) -> None:
+        """Verify API serialization, stage metrics, coverage metadata, and recommendations with nested telemetry."""
+        base = datetime(2026, 10, 17, 10, 0, tzinfo=timezone.utc)
+        records = [
+            PipelineRunRecord(
+                run_id=501,
+                repository="owner/telemetry-repo",
+                branch="main",
+                commit_sha="sha501",
+                status="completed",
+                conclusion="failure",
+                workflow_name="CI Pipeline",
+                event="push",
+                duration_seconds=10.0,
+                failed_stage="dependency",
+                failure_type="dependency_failure",
+                created_at=base,
+                jobs=[
+                    PipelineJobRecord(
+                        github_job_id=901,
+                        job_name="build-and-test",
+                        status="completed",
+                        conclusion="failure",
+                        steps=[
+                            PipelineStepRecord(step_number=1, step_name="Setup", normalized_stage="setup", status="completed", conclusion="success", duration_seconds=0.0),
+                            PipelineStepRecord(step_number=2, step_name="Install", normalized_stage="dependency", status="completed", conclusion="failure", duration_seconds=2.0),
+                            PipelineStepRecord(step_number=3, step_name="Build", normalized_stage="build", status="completed", conclusion="skipped", duration_seconds=None),
+                        ],
+                    )
+                ],
+            ),
+            PipelineRunRecord(
+                run_id=502,
+                repository="owner/telemetry-repo",
+                branch="main",
+                commit_sha="sha502",
+                status="completed",
+                conclusion="failure",
+                workflow_name="CI Pipeline",
+                event="push",
+                duration_seconds=11.0,
+                failed_stage="dependency",
+                failure_type="dependency_failure",
+                created_at=base + timedelta(minutes=1),
+                jobs=[
+                    PipelineJobRecord(
+                        github_job_id=902,
+                        job_name="build-and-test",
+                        status="completed",
+                        conclusion="failure",
+                        steps=[
+                            PipelineStepRecord(step_number=1, step_name="Setup", normalized_stage="setup", status="completed", conclusion="success", duration_seconds=0.0),
+                            PipelineStepRecord(step_number=2, step_name="Install", normalized_stage="dependency", status="completed", conclusion="failure", duration_seconds=3.0),
+                            PipelineStepRecord(step_number=3, step_name="Build", normalized_stage="build", status="completed", conclusion="skipped", duration_seconds=None),
+                        ],
+                    )
+                ],
+            ),
+            PipelineRunRecord(
+                run_id=503,
+                repository="owner/telemetry-repo",
+                branch="main",
+                commit_sha="sha503",
+                status="completed",
+                conclusion="failure",
+                workflow_name="CI Pipeline",
+                event="push",
+                duration_seconds=12.0,
+                failed_stage="dependency",
+                failure_type="dependency_failure",
+                created_at=base + timedelta(minutes=2),
+                jobs=[
+                    PipelineJobRecord(
+                        github_job_id=903,
+                        job_name="build-and-test",
+                        status="completed",
+                        conclusion="failure",
+                        steps=[
+                            PipelineStepRecord(step_number=1, step_name="Setup", normalized_stage="setup", status="completed", conclusion="success", duration_seconds=0.0),
+                            PipelineStepRecord(step_number=2, step_name="Install", normalized_stage="dependency", status="completed", conclusion="failure", duration_seconds=2.5),
+                            PipelineStepRecord(step_number=3, step_name="Build", normalized_stage="build", status="completed", conclusion="skipped", duration_seconds=None),
+                        ],
+                    )
+                ],
+            ),
+            # Fourth run without telemetry to test mixed coverage serialization
+            PipelineRunRecord(
+                run_id=504,
+                repository="owner/telemetry-repo",
+                branch="main",
+                commit_sha="sha504",
+                status="completed",
+                conclusion="success",
+                workflow_name="CI Pipeline",
+                event="push",
+                duration_seconds=15.0,
+                created_at=base + timedelta(minutes=3),
+            ),
+        ]
+        upsert_pipeline_runs(self.db, records, replace_jobs=True)
+
+        res = self.client.get("/api/optimization?repository=owner/telemetry-repo")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        bottlenecks = data["bottlenecks"]
+        self.assertEqual(bottlenecks["average_pipeline_duration"], 12.0)
+        self.assertEqual(bottlenecks["slowest_stage"], "dependency")
+
+        cov = bottlenecks["telemetry_coverage"]
+        self.assertEqual(cov["total_runs_analyzed"], 4)
+        self.assertEqual(cov["runs_with_stage_telemetry"], 3)
+        self.assertEqual(cov["runs_without_stage_telemetry"], 1)
+
+        stage_metrics = bottlenecks["stage_metrics"]
+        self.assertIn("setup", stage_metrics)
+        self.assertEqual(stage_metrics["setup"]["average_stage_duration"], 0.0)
+        self.assertEqual(stage_metrics["setup"]["total_executions"], 3)
+
+        self.assertIn("dependency", stage_metrics)
+        self.assertEqual(stage_metrics["dependency"]["average_stage_duration"], 2.5)
+        self.assertEqual(stage_metrics["dependency"]["stage_failure_count"], 3)
+        self.assertEqual(stage_metrics["dependency"]["stage_failure_rate"], 1.0)
+        self.assertEqual(stage_metrics["dependency"]["total_executions"], 3)
+
+        # Build was skipped in all runs -> not in stage_metrics
+        self.assertNotIn("build", stage_metrics)
+
+        # Recommendation for dependency stage reliability
+        recs = data["recommendations"]
+        dep_rec = next((r for r in recs if r["affected_stage"] == "dependency"), None)
+        self.assertIsNotNone(dep_rec)
+        self.assertEqual(dep_rec["title"], "Investigate Stage Reliability")
+        self.assertIn("100.0%", dep_rec["reason"])
 
 
 if __name__ == "__main__":

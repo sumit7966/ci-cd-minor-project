@@ -7,9 +7,14 @@ from .github_collector import (
     MissingTokenError,
     RateLimitExceededError,
     RepositoryNotFoundError,
+    RunTelemetryUnavailableError,
     collect_workflow_runs,
 )
-from .schemas import PipelineRunRecord
+from .schemas import (
+    PipelineJobRecord,
+    PipelineRunRecord,
+    PipelineStepRecord,
+)
 from .storage import (
     save_pipeline_runs_to_db,
     sync_github_runs_to_db,
@@ -17,13 +22,26 @@ from .storage import (
 
 __all__ = [
     "PipelineRunRecord",
+    "PipelineJobRecord",
+    "PipelineStepRecord",
     "GitHubWorkflowRunCollector",
     "collect_workflow_runs",
     "GitHubCollectorError",
     "MissingTokenError",
     "RepositoryNotFoundError",
     "RateLimitExceededError",
+    "RunTelemetryUnavailableError",
     "GitHubAPIError",
     "save_pipeline_runs_to_db",
     "sync_github_runs_to_db",
+    "backfill_job_telemetry",
 ]
+
+
+def __getattr__(name: str):
+    """Lazily expose backfill_job_telemetry without triggering db circular imports or runpy warnings."""
+    if name == "backfill_job_telemetry":
+        from .backfill import backfill_job_telemetry
+
+        return backfill_job_telemetry
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

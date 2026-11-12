@@ -1,13 +1,41 @@
-# Python cache
+# Python cache & build artifacts
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
 
 # Pytest cache
 .pytest_cache/
 
-# VS Code
-.vscode/
-
+# Environment files & secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Database files & local dumps
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+
+# Logs
+*.log
+logs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE & OS-specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

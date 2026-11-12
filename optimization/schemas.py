@@ -15,6 +15,7 @@ class BottleneckAnalysisSchema(BaseModel):
     slowest_stage: Optional[str] = None
     potential_bottlenecks: List[Dict[str, Any]]
     message: Optional[str] = None
+    telemetry_coverage: Optional[Dict[str, Any]] = None
 
 class OptimizationSummarySchema(BaseModel):
     bottlenecks: BottleneckAnalysisSchema

@@ -7,8 +7,20 @@ class StageRun:
     """Represents a single stage within a pipeline run."""
     name: str
     duration: float  # Duration in seconds
-    status: str  # e.g., 'success', 'failure', 'skipped'
+    status: str  # e.g., 'success', 'failure', 'skipped', 'incomplete'
     failure_type: Optional[str] = None  # e.g., 'test_failure', 'timeout', 'build_error'
+    duration_available: bool = True
+    skipped_count: int = 0
+    incomplete_count: int = 0
+
+    @property
+    def is_executed(self) -> bool:
+        """Return True when the stage represents a completed execution with valid timing."""
+        normalized_status = (self.status or "").strip().lower()
+        return (
+            normalized_status not in ("skipped", "incomplete", "queued", "pending", "in_progress")
+            and self.duration_available
+        )
 
 @dataclass
 class PipelineRun:
@@ -19,6 +31,10 @@ class PipelineRun:
     timestamp: datetime
     stages: List[StageRun] = field(default_factory=list)
     failed_stage: Optional[str] = None
+    has_stage_telemetry: bool = False
+    job_count: int = 0
+    step_count: int = 0
+    queue_duration_seconds: Optional[float] = None
 
 @dataclass
 class OptimizationRecommendation:

@@ -1,5 +1,6 @@
+from datetime import datetime, timezone
 import unittest
-from optimization import FailureAnalyzer
+from optimization import FailureAnalyzer, PipelineRun, StageRun
 from tests.optimization.fixtures import generate_synthetic_dataset
 
 class TestOptimizationEngine(unittest.TestCase):
@@ -24,6 +25,52 @@ class TestOptimizationEngine(unittest.TestCase):
         # Test failure rate
         rate = analyzer.get_failure_rate()
         self.assertEqual(rate, 2/6)
+
+    def test_stage_failure_metrics_excludes_skipped_and_incomplete(self):
+        base = datetime(2026, 10, 16, 10, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("1", "failure", 20.0, base, stages=[
+                StageRun("build", 10.0, "success", duration_available=True),
+                StageRun("test", 5.0, "failure", "timeout", duration_available=True),
+            ]),
+            PipelineRun("2", "failure", 15.0, base, stages=[
+                StageRun("build", 10.0, "success", duration_available=True),
+                StageRun("test", 0.0, "skipped", duration_available=False, skipped_count=1),
+            ]),
+            PipelineRun("3", "failure", 12.0, base, stages=[
+                StageRun("build", 5.0, "failure", "build_failure", duration_available=True),
+                StageRun("test", 0.0, "skipped", duration_available=False, skipped_count=1),
+            ]),
+        ]
+        analyzer = FailureAnalyzer(runs)
+        stage_metrics = analyzer.get_stage_failure_metrics()
+
+        # 'test' had 1 executed stage (failed) and 2 skipped -> stage failure rate = 1/1 = 100%
+        self.assertEqual(stage_metrics["test"]["total_executions"], 1)
+        self.assertEqual(stage_metrics["test"]["stage_failure_count"], 1)
+        self.assertEqual(stage_metrics["test"]["stage_failure_rate"], 1.0)
+
+        # 'build' had 3 executed stages and 1 failure -> stage failure rate = 1/3
+        self.assertEqual(stage_metrics["build"]["total_executions"], 3)
+        self.assertEqual(stage_metrics["build"]["stage_failure_count"], 1)
+        self.assertAlmostEqual(stage_metrics["build"]["stage_failure_rate"], 1/3)
+
+    def test_pipeline_failed_stage_recurrence_distinct_from_stage_failure_rate(self):
+        base = datetime(2026, 10, 16, 10, 0, tzinfo=timezone.utc)
+        runs = [
+            PipelineRun("1", "failure", 20.0, base, stages=[], failed_stage="deploy"),
+            PipelineRun("2", "failure", 15.0, base, stages=[], failed_stage="deploy"),
+            PipelineRun("3", "success", 12.0, base, stages=[]),
+            PipelineRun("4", "success", 14.0, base, stages=[]),
+        ]
+        analyzer = FailureAnalyzer(runs)
+        recurrence = analyzer.get_pipeline_failed_stage_recurrence()
+        self.assertEqual(len(recurrence), 1)
+        stage_name, count, rate = recurrence[0]
+        self.assertEqual(stage_name, "deploy")
+        self.assertEqual(count, 2)
+        # 2 / 4 = 50.0% pipeline-level recurrence across all eligible runs
+        self.assertEqual(rate, 0.5)
 
 if __name__ == '__main__':
     unittest.main()

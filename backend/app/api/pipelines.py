@@ -1,11 +1,14 @@
 """FastAPI router for CI/CD pipeline execution run queries, syncing, and statistics."""
 
+import os
 from typing import Any, Dict, List, Optional
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 # pyrefly: ignore [missing-import]
 from sqlalchemy.orm import Session
 
+# pyrefly: ignore [missing-import]
+from ..data_collection.backfill import _sanitize_error_detail, backfill_job_telemetry
 # pyrefly: ignore [missing-import]
 from ..data_collection.github_collector import (
     GitHubAPIError,
@@ -34,6 +37,8 @@ def sync_pipeline_runs(
     limit: int = Query(10, ge=1, le=100, description="Number of workflow runs to fetch"),
     use_mock: bool = Query(False, description="Use realistic offline mock data"),
     repository: Optional[str] = Query(None, description="Repository in 'owner/repo' format"),
+    fetch_jobs: bool = Query(True, description="Fetch job and step execution telemetry when available"),
+    refresh_jobs: bool = Query(False, description="Re-fetch job telemetry even for completed runs already stored"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Collect recent workflow execution runs from GitHub Actions and persist to PostgreSQL.
@@ -46,10 +51,16 @@ def sync_pipeline_runs(
             repository=repository,
             limit=limit,
             use_mock=use_mock,
+            fetch_jobs=fetch_jobs,
+            refresh_jobs=refresh_jobs,
         )
+        jobs_synced = result.get("jobs_synced", 0)
+        steps_synced = result.get("steps_synced", 0)
         return {
             "status": "success",
             "message": f"Successfully synced {result['total_fetched']} runs ({result['inserted']} new, {result['updated']} updated)",
+            "jobs_synced": jobs_synced,
+            "steps_synced": steps_synced,
             "data": result,
         }
     except MissingTokenError as err:
@@ -81,6 +92,87 @@ def sync_pipeline_runs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred during pipeline run sync: {str(err)}",
+        ) from err
+
+
+@router.post(
+    "/backfill-telemetry",
+    summary="Backfill historical job and step telemetry for existing stored pipeline runs",
+)
+def backfill_pipeline_telemetry(
+    dry_run: bool = Query(
+        True,
+        description="Preview backfill plan without persisting to PostgreSQL (set false to apply)",
+    ),
+    probe_github: bool = Query(
+        False,
+        description="When dry_run=true, execute read-only GitHub job fetches to estimate inserts/updates",
+    ),
+    repository: Optional[str] = Query(
+        None,
+        description="Filter stored target runs by repository slug ('owner/repo')",
+    ),
+    run_ids: Optional[List[int]] = Query(
+        None,
+        description="Optional explicit GitHub run_id values to backfill",
+    ),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=500,
+        description="Maximum number of stored runs to evaluate in this batch",
+    ),
+    offset: int = Query(0, ge=0, description="Pagination offset across matching stored runs"),
+    refresh_jobs: bool = Query(
+        False,
+        description="Re-fetch and reconcile jobs/steps for completed runs that already have telemetry",
+    ),
+    reconcile_empty: bool = Query(
+        False,
+        description="Allow confirmed complete empty job responses to prune existing stored child rows",
+    ),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Safely backfill GitHub Actions job and step telemetry for existing pipeline_runs rows.
+
+    Operational restriction: Intended for internal/local administrative use only because
+    no FastAPI user-authentication middleware is configured in this application. Write
+    execution (``dry_run=false``) requires ``GITHUB_TOKEN`` in the backend process environment.
+    """
+    token = os.getenv("GITHUB_TOKEN")
+    try:
+        result = backfill_job_telemetry(
+            db=db,
+            repository=repository,
+            run_ids=run_ids,
+            limit=limit,
+            offset=offset,
+            refresh_jobs=refresh_jobs,
+            dry_run=dry_run,
+            probe_github=probe_github,
+            reconcile_empty=reconcile_empty,
+        )
+        return {
+            "status": "partial" if result["stopped_early"] else "success",
+            **result,
+        }
+    except MissingTokenError as err:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_sanitize_error_detail(str(err), token),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_sanitize_error_detail(str(err), token),
+        ) from err
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "An unexpected error occurred during historical telemetry backfill: "
+                f"{_sanitize_error_detail(str(err), token)}"
+            ),
         ) from err
 
 
