@@ -45,6 +45,13 @@ def sync_pipeline_runs(
 
     Avoids duplicates by updating existing records or creating new ones based on run_id.
     """
+    engine = db.get_bind()
+    if "mode=ro" in str(getattr(engine, "url", "")).lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Database is operating in read-only demonstration mode. Modifying records is disabled.",
+        )
+
     try:
         result = sync_github_runs_to_db(
             db=db,
@@ -140,6 +147,14 @@ def backfill_pipeline_telemetry(
     execution (``dry_run=false``) requires ``GITHUB_TOKEN`` in the backend process environment.
     """
     token = os.getenv("GITHUB_TOKEN")
+    if not dry_run:
+        engine = db.get_bind()
+        if "mode=ro" in str(getattr(engine, "url", "")).lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Database is operating in read-only demonstration mode. Telemetry backfill writes are disabled.",
+            )
+
     try:
         result = backfill_job_telemetry(
             db=db,

@@ -23,6 +23,8 @@ def get_engine(db_url: Optional[str] = None) -> Engine:
         connect_args = {}
         if target_url.startswith("sqlite"):
             connect_args["check_same_thread"] = False
+            if "mode=ro" in target_url.lower() or "uri=true" in target_url.lower():
+                connect_args["uri"] = True
 
         _engine = create_engine(
             target_url,
@@ -34,6 +36,15 @@ def get_engine(db_url: Optional[str] = None) -> Engine:
     return _engine
 
 
+def reset_engine() -> None:
+    """Reset the cached engine and sessionmaker singleton."""
+    global _engine, _session_factory
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _session_factory = None
+
+
 def get_session_factory(db_url: Optional[str] = None) -> sessionmaker:
     """Obtain the sessionmaker factory for creating database sessions."""
     get_engine(db_url)
@@ -42,8 +53,13 @@ def get_session_factory(db_url: Optional[str] = None) -> sessionmaker:
 
 
 def init_db(engine: Optional[Engine] = None) -> None:
-    """Create all database tables defined in the metadata."""
+    """Create all database tables defined in the metadata.
+
+    Gracefully skips table creation when running against a read-only SQLite snapshot.
+    """
     target_engine = engine or get_engine()
+    if "mode=ro" in str(getattr(target_engine, "url", "")).lower():
+        return
     Base.metadata.create_all(bind=target_engine)
 
 

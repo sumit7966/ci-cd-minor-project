@@ -1,0 +1,27 @@
+# Environments and credentials
+.env
+.env.*
+!.env.example
+
+# Python runtime caches and test suites
+__pycache__/
+*.py[cod]
+.pytest_cache/
+tests/
+pytest.ini
+
+# Docker and local development artifacts
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Git and GitHub metadata
+.git/
+.github/
+
+# Logs and runtime caches
+*.log
+logs/
+.temp/
+*.tmp
+
