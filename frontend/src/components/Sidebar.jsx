@@ -38,7 +38,7 @@ const Sidebar = ({
         aria-label="Sidebar navigation"
       >
         <div className="sidebar-header">
-          <h2>CI/CD Platform</h2>
+          <h2>ShipSwift</h2>
           <button
             type="button"
             className="sidebar-close-btn"
