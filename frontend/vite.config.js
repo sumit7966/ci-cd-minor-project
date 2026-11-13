@@ -8,6 +8,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      outDir: '../dist',
+      emptyOutDir: true,
+    },
     server: {
       proxy: {
         '/api': {
