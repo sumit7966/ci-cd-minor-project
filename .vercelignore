@@ -9,6 +9,11 @@ __pycache__/
 .pytest_cache/
 tests/
 pytest.ini
+requirements-dev.txt
+
+# Frontend dependencies and caches (compiled output is in root dist/)
+frontend/node_modules/
+node_modules/
 
 # Docker and local development artifacts
 docker-compose.yml
@@ -24,4 +29,3 @@ Dockerfile
 logs/
 .temp/
 *.tmp
-

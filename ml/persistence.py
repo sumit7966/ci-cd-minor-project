@@ -9,14 +9,12 @@ from pathlib import Path
 import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import joblib
-import sklearn
-
 logger = logging.getLogger("ml.persistence")
 
 DEFAULT_MODEL_DIR: Path = Path(__file__).resolve().parent / "models"
 MODEL_FILENAME: str = "pipeline_failure_model.joblib"
 METADATA_FILENAME: str = "metadata.json"
+WEIGHTS_FILENAME: str = "model_weights.json"
 VERSIONS_SUBDIR: str = "versions"
 DEFAULT_VERSION: str = "1.0.0"
 
@@ -83,19 +81,121 @@ def get_model_paths(
     return base_dir / MODEL_FILENAME, base_dir / METADATA_FILENAME
 
 
+def get_weights_path(
+    model_dir: Optional[Union[Path, str]] = None,
+    version: Optional[str] = None,
+) -> Tuple[Path, Path]:
+    """Resolve paths for lightweight weights JSON and metadata file."""
+    base_dir = resolve_model_dir(model_dir)
+    if version:
+        version_dir = base_dir / VERSIONS_SUBDIR
+        weights_name = f"model_weights_v{version}.json"
+        meta_name = f"metadata_v{version}.json"
+        return version_dir / weights_name, version_dir / meta_name
+    return base_dir / WEIGHTS_FILENAME, base_dir / METADATA_FILENAME
+
+
+def has_weights(
+    model_dir: Optional[Union[Path, str]] = None,
+    version: Optional[str] = None,
+) -> bool:
+    """Check if lightweight weights JSON exists on disk."""
+    weights_path, metadata_path = get_weights_path(model_dir, version=version)
+    return weights_path.is_file() and metadata_path.is_file()
+
+
+def load_weights(
+    model_dir: Optional[Union[Path, str]] = None,
+    version: Optional[str] = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Load lightweight weights JSON and metadata without scikit-learn or joblib."""
+    weights_path, metadata_path = get_weights_path(model_dir, version=version)
+    if not weights_path.is_file():
+        target = f"Weights version '{version}'" if version else "Trained weights artifact"
+        raise FileNotFoundError(f"{target} not found at '{weights_path}'.")
+    with open(weights_path, "r", encoding="utf-8") as f:
+        weights = json.load(f)
+    metadata: Dict[str, Any] = {}
+    if metadata_path.is_file():
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        except Exception:
+            pass
+    return weights, metadata
+
+
+def extract_weights_from_pipeline(pipeline: Any) -> Dict[str, Any]:
+    """Extract fitted parameters from a scikit-learn Pipeline into pure JSON-serializable primitives."""
+    extractor = pipeline.named_steps["preprocessor"].named_steps["extractor"]
+    col_trans = pipeline.named_steps["preprocessor"].named_steps["preprocessor"]
+    cat_encoder = col_trans.named_transformers_["cat"].named_steps["encoder"]
+    num_imputer = col_trans.named_transformers_["num"].named_steps["imputer"]
+    num_scaler = col_trans.named_transformers_["num"].named_steps["scaler"]
+    clf = pipeline.named_steps["classifier"]
+
+    branch_stats_clean = {
+        f"{k[0]}::{k[1]}": v for k, v in extractor.branch_stats_.items()
+    }
+    wf_stats_clean = {
+        f"{k[0]}::{k[1]}": v for k, v in extractor.workflow_stats_.items()
+    }
+
+    return {
+        "model_version": "1.0.0",
+        "model_type": str(getattr(clf.__class__, "__name__", "LogisticRegression")),
+        "classes": [int(c) for c in clf.classes_],
+        "intercept": float(clf.intercept_[0]),
+        "coefficients": [float(x) for x in clf.coef_[0]],
+        "categorical_features": ["repository", "branch", "workflow_name", "event"],
+        "categorical_categories": {
+            "repository": [str(x) for x in cat_encoder.categories_[0]],
+            "branch": [str(x) for x in cat_encoder.categories_[1]],
+            "workflow_name": [str(x) for x in cat_encoder.categories_[2]],
+            "event": [str(x) for x in cat_encoder.categories_[3]],
+        },
+        "numerical_features": [
+            "hour", "day_of_week", "is_weekend",
+            "hist_repo_failure_rate", "hist_branch_failure_rate",
+            "hist_workflow_failure_rate", "hist_consecutive_failures"
+        ],
+        "numerical_imputer_medians": [float(x) for x in num_imputer.statistics_],
+        "numerical_scaler_means": [float(x) for x in num_scaler.mean_],
+        "numerical_scaler_scales": [float(x) for x in num_scaler.scale_],
+        "extractor_stats": {
+            "global_failure_rate": float(extractor.global_failure_rate_),
+            "repo_stats": extractor.repo_stats_,
+            "branch_stats": branch_stats_clean,
+            "workflow_stats": wf_stats_clean,
+        },
+        "feature_names_in_order": [
+            "cat__repository_sumit7966/ci-cd-minor-project",
+            "cat__branch_main",
+            "cat__branch_member1",
+            "cat__workflow_name_CI Pipeline",
+            "cat__event_push",
+            "cat__event_workflow_dispatch",
+            "num__hour",
+            "num__day_of_week",
+            "num__is_weekend",
+            "num__hist_repo_failure_rate",
+            "num__hist_branch_failure_rate",
+            "num__hist_workflow_failure_rate",
+            "num__hist_consecutive_failures"
+        ]
+    }
+
+
 def is_model_trained(
     model_dir: Optional[Union[Path, str]] = None,
     version: Optional[str] = None,
 ) -> bool:
     """Check if serialized model artifact and metadata exist on disk.
 
-    Args:
-        model_dir: Base model storage directory.
-        version: Optional specific model version to check.
-
-    Returns:
-        True if both the joblib binary and metadata JSON exist.
+    Supports either lightweight model_weights.json or binary .joblib artifact.
     """
+    if has_weights(model_dir, version=version):
+        return True
     model_path, metadata_path = get_model_paths(model_dir, version=version)
     return model_path.is_file() and metadata_path.is_file()
 
@@ -224,6 +324,12 @@ def save_model(
         version or metadata.get("model_version") or DEFAULT_VERSION
     ).strip()
 
+    try:
+        import joblib
+        import sklearn
+    except ImportError as err:
+        raise RuntimeError("scikit-learn and joblib are required for saving binary model artifacts.") from err
+
     # Step 1: Serialize active pipeline artifact
     try:
         joblib.dump(pipeline, active_model_path)
@@ -241,8 +347,8 @@ def save_model(
         "created_at": now_utc,
         "trained_at": str(metadata.get("trained_at", now_utc)),
         "framework": "scikit-learn",
-        "scikit_learn_version": sklearn.__version__,
-        "joblib_version": joblib.__version__,
+        "scikit_learn_version": getattr(sklearn, "__version__", "1.9.1"),
+        "joblib_version": getattr(joblib, "__version__", "1.6.0"),
         "random_state": metadata.get("random_state", 42),
         "split_type": metadata.get("split_type", "chronological"),
         "dataset_size": metadata.get("dataset_size"),
@@ -296,6 +402,19 @@ def save_model(
         except OSError as err:
             logger.warning("Failed to write versioned archive for v%s: %s", resolved_version, err)
 
+    # Step 6: Also export and save lightweight weights JSON artifact
+    try:
+        weights_dict = extract_weights_from_pipeline(pipeline)
+        active_weights_path = base_dir / WEIGHTS_FILENAME
+        with open(active_weights_path, "w", encoding="utf-8") as f:
+            json.dump(weights_dict, f, indent=2)
+        if archive_version:
+            v_weights_path, _ = get_weights_path(base_dir, version=resolved_version)
+            with open(v_weights_path, "w", encoding="utf-8") as f:
+                json.dump(weights_dict, f, indent=2)
+    except Exception as err:
+        logger.warning("Could not export lightweight weights JSON: %s", err)
+
     return active_model_path, active_metadata_path
 
 
@@ -319,6 +438,11 @@ def load_model(
         FileNotFoundError: If the model has not been trained or saved yet.
         RuntimeError: If deserialization fails.
     """
+    try:
+        import joblib
+    except ImportError as err:
+        raise RuntimeError("joblib is required to deserialize binary .joblib model artifacts.") from err
+
     model_path, metadata_path = get_model_paths(model_dir, version=version)
 
     if not model_path.is_file():

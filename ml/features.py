@@ -11,13 +11,6 @@ This module provides the preprocessing and feature-engineering layer for Member 
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
-import numpy as np
-import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # Categorical pre-run metadata columns (available before execution begins)
 CATEGORICAL_COLUMNS: List[str] = [
@@ -60,7 +53,7 @@ LEAKAGE_COLUMNS: List[str] = [
 ]
 
 
-class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
+class PipelineRunFeatureExtractor:
     """Custom transformer extracting pre-run temporal features and historical signals.
 
     Ensures zero target leakage:
@@ -78,8 +71,19 @@ class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
         self.workflow_stats_: Dict[Tuple[str, str], Dict[str, Any]] = {}
         self.is_fitted_: bool = False
 
-    def fit(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None):
+    def get_params(self, deep: bool = True) -> Dict[str, Any]:
+        """Scikit-learn estimator interface compatibility."""
+        return {}
+
+    def set_params(self, **params: Any) -> "PipelineRunFeatureExtractor":
+        """Scikit-learn estimator interface compatibility."""
+        return self
+
+    def fit(self, X: Any, y: Optional[Any] = None) -> "PipelineRunFeatureExtractor":
         """Fit the extractor on training telemetry and learn historical failure distributions."""
+        import numpy as np
+        import pandas as pd
+
         df = X.copy() if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
         df = df.reset_index(drop=True)
 
@@ -142,8 +146,11 @@ class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
         self.is_fitted_ = True
         return self
 
-    def fit_transform(self, X: pd.DataFrame, y: Optional[Union[pd.Series, np.ndarray]] = None) -> pd.DataFrame:
+    def fit_transform(self, X: Any, y: Optional[Any] = None) -> Any:
         """Fit extractor and transform training telemetry chronologically without lookahead leakage."""
+        import numpy as np
+        import pandas as pd
+
         self.fit(X, y)
 
         df = X.copy() if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
@@ -219,8 +226,11 @@ class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
 
         return features[ALL_FEATURE_COLUMNS]
 
-    def transform(self, X: Union[pd.DataFrame, Dict[str, Any]]) -> pd.DataFrame:
+    def transform(self, X: Any) -> Any:
         """Transform incoming pre-run samples for inference using fitted historical distributions."""
+        import numpy as np
+        import pandas as pd
+
         if isinstance(X, dict):
             df = pd.DataFrame([X])
         elif isinstance(X, pd.DataFrame):
@@ -266,8 +276,11 @@ class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
 
         return features[ALL_FEATURE_COLUMNS]
 
-    def _build_base_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _build_base_dataframe(self, df: Any) -> Any:
         """Extract baseline categorical and temporal features, rejecting leakage fields."""
+        import numpy as np
+        import pandas as pd
+
         features = pd.DataFrame(index=df.index)
 
         # Categorical columns
@@ -295,12 +308,20 @@ class PipelineRunFeatureExtractor(BaseEstimator, TransformerMixin):
         return features
 
 
-def build_feature_preprocessor() -> ColumnTransformer:
+def build_feature_preprocessor() -> Any:
     """Build scikit-learn ColumnTransformer for imputing and encoding engineered features.
 
     - Categoricals: SimpleImputer ('unknown') + OneHotEncoder (handle_unknown='ignore')
     - Numerics: SimpleImputer (median) + StandardScaler
     """
+    try:
+        from sklearn.compose import ColumnTransformer
+        from sklearn.impute import SimpleImputer
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import OneHotEncoder, StandardScaler
+    except ImportError as err:
+        raise RuntimeError("scikit-learn is required for building preprocessing pipelines.") from err
+
     cat_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value="unknown")),
@@ -324,8 +345,13 @@ def build_feature_preprocessor() -> ColumnTransformer:
     )
 
 
-def build_preprocessor() -> Pipeline:
+def build_preprocessor() -> Any:
     """Build the end-to-end preprocessing pipeline combining feature extraction and encoding."""
+    try:
+        from sklearn.pipeline import Pipeline
+    except ImportError as err:
+        raise RuntimeError("scikit-learn is required for building preprocessing pipelines.") from err
+
     return Pipeline(
         steps=[
             ("extractor", PipelineRunFeatureExtractor()),

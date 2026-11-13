@@ -1,0 +1,128 @@
+{
+  "model_version": "1.0.0",
+  "model_type": "LogisticRegression",
+  "classes": [
+    0,
+    1
+  ],
+  "intercept": -0.030080611971021316,
+  "coefficients": [
+    -0.030080611971021316,
+    -0.4435831214979937,
+    0.4135025095269724,
+    -0.030080611971021316,
+    -0.47206516661861625,
+    0.441984554647595,
+    0.3595843485031349,
+    0.0,
+    0.0,
+    -0.38335633157995713,
+    0.007607441621129179,
+    -0.38335633157995713,
+    0.44641196260311117
+  ],
+  "categorical_features": [
+    "repository",
+    "branch",
+    "workflow_name",
+    "event"
+  ],
+  "categorical_categories": {
+    "repository": [
+      "sumit7966/ci-cd-minor-project"
+    ],
+    "branch": [
+      "main",
+      "member1"
+    ],
+    "workflow_name": [
+      "CI Pipeline"
+    ],
+    "event": [
+      "push",
+      "workflow_dispatch"
+    ]
+  },
+  "numerical_features": [
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "hist_repo_failure_rate",
+    "hist_branch_failure_rate",
+    "hist_workflow_failure_rate",
+    "hist_consecutive_failures"
+  ],
+  "numerical_imputer_medians": [
+    7.0,
+    2.0,
+    0.0,
+    0.3333,
+    0.3333,
+    0.3333,
+    0.0
+  ],
+  "numerical_scaler_means": [
+    7.818181818181818,
+    2.0,
+    0.0,
+    0.32734545454545455,
+    0.2969636363636364,
+    0.32734545454545455,
+    1.0
+  ],
+  "numerical_scaler_scales": [
+    1.1134044285378082,
+    1.0,
+    1.0,
+    0.18789784150696145,
+    0.246372619762414,
+    0.18789784150696145,
+    1.348399724926484
+  ],
+  "extractor_stats": {
+    "global_failure_rate": 0.45454545454545453,
+    "repo_stats": {
+      "sumit7966/ci-cd-minor-project": {
+        "total": 11,
+        "failures": 5,
+        "rate": 0.4545
+      }
+    },
+    "branch_stats": {
+      "sumit7966/ci-cd-minor-project::main": {
+        "total": 4,
+        "failures": 1,
+        "rate": 0.25,
+        "consecutive_failures": 0
+      },
+      "sumit7966/ci-cd-minor-project::member1": {
+        "total": 7,
+        "failures": 4,
+        "rate": 0.5714,
+        "consecutive_failures": 0
+      }
+    },
+    "workflow_stats": {
+      "sumit7966/ci-cd-minor-project::CI Pipeline": {
+        "total": 11,
+        "failures": 5,
+        "rate": 0.4545
+      }
+    }
+  },
+  "feature_names_in_order": [
+    "cat__repository_sumit7966/ci-cd-minor-project",
+    "cat__branch_main",
+    "cat__branch_member1",
+    "cat__workflow_name_CI Pipeline",
+    "cat__event_push",
+    "cat__event_workflow_dispatch",
+    "num__hour",
+    "num__day_of_week",
+    "num__is_weekend",
+    "num__hist_repo_failure_rate",
+    "num__hist_branch_failure_rate",
+    "num__hist_workflow_failure_rate",
+    "num__hist_consecutive_failures"
+  ]
+}

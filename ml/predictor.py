@@ -1,19 +1,25 @@
 """Inference service for CI/CD pipeline failure risk prediction.
 
-Loads trained scikit-learn pipeline artifacts once, enforces strict input validation,
+Loads trained lightweight model artifacts once, enforces strict input validation,
 prevents target leakage, safely handles missing fields and unseen categories,
-and computes failure probability with risk level classification.
+and computes failure probability with risk level classification using standard library math.
 """
 
 from datetime import datetime, timezone
 import logging
+import math
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
-import numpy as np
-import pandas as pd
+from typing import Any, Dict, List, Optional, Union
 
 from .features import LEAKAGE_COLUMNS, PRE_RUN_CATEGORICAL_COLUMNS, PRE_RUN_FEATURE_COLUMNS
-from .persistence import get_model_paths, is_model_trained, load_model
+from .persistence import (
+    get_model_paths,
+    get_weights_path,
+    has_weights,
+    is_model_trained,
+    load_model,
+    load_weights,
+)
 
 logger = logging.getLogger("ml.predictor")
 
@@ -32,6 +38,35 @@ class InvalidPredictionInputError(ValueError):
     pass
 
 
+class _Row(dict):
+    """Lightweight dictionary subclass providing .to_dict() compatibility."""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dict(self)
+
+
+class NormalizedSample:
+    """Lightweight single-row tabular container simulating DataFrame behavior for inference."""
+
+    def __init__(self, data: Dict[str, Any]) -> None:
+        self._data = _Row(data)
+        self.columns: List[str] = list(data.keys())
+        self.iloc: List[_Row] = [self._data]
+        self.index: List[int] = [0]
+
+    def __len__(self) -> int:
+        return 1
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._data.get(key, default)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dict(self._data)
+
+
 class PipelineFailurePredictor:
     """Production predictor evaluating CI/CD failure probability before pipeline execution starts.
 
@@ -43,6 +78,7 @@ class PipelineFailurePredictor:
     - Returns valid probabilities bounded in [0.0, 1.0].
     - Handles missing fields, empty strings, and unseen categories gracefully.
     - Never hardcodes predictions or retrains per request.
+    - Operates with zero heavy ML dependencies (no pandas, NumPy, SciPy, or scikit-learn needed).
     """
 
     def __init__(
@@ -60,6 +96,7 @@ class PipelineFailurePredictor:
         """
         self.model_dir = model_dir
         self.version = version
+        self.weights: Optional[Dict[str, Any]] = None
         self.pipeline: Optional[Any] = None
         self.metadata: Dict[str, Any] = {}
         self.load_count: int = 0
@@ -69,15 +106,33 @@ class PipelineFailurePredictor:
 
     def is_ready(self) -> bool:
         """Return True if a trained model is loaded and ready for inference."""
-        return self.pipeline is not None
+        return self.weights is not None or self.pipeline is not None
 
     def load(self) -> None:
         """Load trained model pipeline and metadata from disk once into memory."""
+        # Priority 1: Lightweight weights JSON
+        if has_weights(self.model_dir, version=self.version):
+            try:
+                self.weights, self.metadata = load_weights(self.model_dir, version=self.version)
+                self.pipeline = None
+                self.load_count += 1
+                logger.info(
+                    "Loaded lightweight ML weights (version: %s, type: %s, load_count: %d)",
+                    self.metadata.get("model_version", self.weights.get("model_version", "unknown")),
+                    self.metadata.get("model_type", self.weights.get("model_type", "unknown")),
+                    self.load_count,
+                )
+                return
+            except Exception as err:
+                logger.warning("Could not load lightweight weights artifact, falling back: %s", err)
+
+        # Priority 2: Binary joblib pipeline (if joblib is installed locally)
         try:
             self.pipeline, self.metadata = load_model(self.model_dir, version=self.version)
+            self.weights = None
             self.load_count += 1
             logger.info(
-                "Loaded ML model pipeline (version: %s, type: %s, load_count: %d)",
+                "Loaded binary ML model pipeline (version: %s, type: %s, load_count: %d)",
                 self.metadata.get("model_version", "unknown"),
                 self.metadata.get("model_type", "unknown"),
                 self.load_count,
@@ -94,15 +149,15 @@ class PipelineFailurePredictor:
 
     def validate_and_format_input(
         self,
-        sample: Union[Dict[str, Any], pd.Series, pd.DataFrame],
-    ) -> pd.DataFrame:
-        """Validate input telemetry, prevent target leakage, and construct model-ready DataFrame.
+        sample: Any,
+    ) -> NormalizedSample:
+        """Validate input telemetry, prevent target leakage, and construct normalized sample container.
 
         Args:
             sample: Input telemetry dictionary, Series, or single-row DataFrame.
 
         Returns:
-            Normalized single-row pandas DataFrame matching approved pre-run feature schema.
+            Normalized sample matching approved pre-run feature schema.
 
         Raises:
             InvalidPredictionInputError: If input is None, empty, or wrong type.
@@ -114,14 +169,13 @@ class PipelineFailurePredictor:
             if not sample:
                 raise InvalidPredictionInputError("Prediction input dictionary cannot be empty.")
             raw_data = dict(sample)
-        elif isinstance(sample, pd.Series):
-            if sample.empty:
-                raise InvalidPredictionInputError("Prediction input Series cannot be empty.")
-            raw_data = sample.to_dict()
-        elif isinstance(sample, pd.DataFrame):
-            if sample.empty:
-                raise InvalidPredictionInputError("Prediction input DataFrame cannot be empty.")
-            raw_data = sample.iloc[0].to_dict()
+        elif hasattr(sample, "to_dict"):
+            if hasattr(sample, "empty") and sample.empty:
+                raise InvalidPredictionInputError("Prediction input Series or DataFrame cannot be empty.")
+            if hasattr(sample, "iloc"):
+                raw_data = sample.iloc[0].to_dict()
+            else:
+                raw_data = sample.to_dict()
         else:
             raise InvalidPredictionInputError(
                 f"Prediction input must be a dict, pd.Series, or pd.DataFrame; received {type(sample).__name__}."
@@ -146,29 +200,33 @@ class PipelineFailurePredictor:
         created_val = raw_data.get("created_at")
         if created_val is None or (isinstance(created_val, str) and not created_val.strip()):
             formatted["created_at"] = datetime.now(timezone.utc)
-        elif isinstance(created_val, (datetime, pd.Timestamp)):
+        elif isinstance(created_val, datetime):
             if created_val.tzinfo is None:
                 formatted["created_at"] = created_val.replace(tzinfo=timezone.utc)
             else:
                 formatted["created_at"] = created_val.astimezone(timezone.utc)
         else:
             # Parse date string safely
-            parsed_dt = pd.to_datetime(created_val, utc=True, errors="coerce")
-            if pd.isna(parsed_dt):
+            str_val = str(created_val).strip()
+            try:
+                dt = datetime.fromisoformat(str_val.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    formatted["created_at"] = dt.replace(tzinfo=timezone.utc)
+                else:
+                    formatted["created_at"] = dt.astimezone(timezone.utc)
+            except Exception:
                 logger.warning("Invalid created_at timestamp '%s'; defaulting to current UTC.", created_val)
                 formatted["created_at"] = datetime.now(timezone.utc)
-            else:
-                formatted["created_at"] = parsed_dt.to_pydatetime()
 
         # Preserve run_id if provided
         if "run_id" in raw_data:
             formatted["run_id"] = raw_data["run_id"]
 
-        return pd.DataFrame([formatted])
+        return NormalizedSample(formatted)
 
     def predict_proba(
         self,
-        sample: Union[Dict[str, Any], pd.Series, pd.DataFrame],
+        sample: Any,
     ) -> float:
         """Estimate the failure probability for the given pipeline run.
 
@@ -188,7 +246,76 @@ class PipelineFailurePredictor:
                 "Train a model first or call predictor.load()."
             )
 
-        df = self.validate_and_format_input(sample)
+        norm_sample = self.validate_and_format_input(sample)
+
+        # Pure Python inference using model_weights.json
+        if self.weights is not None:
+            row = norm_sample.iloc[0]
+            repo = row.get("repository", "unknown")
+            branch = row.get("branch", "unknown")
+            wf = row.get("workflow_name", "unknown")
+            event = row.get("event", "unknown")
+
+            created_dt = row.get("created_at")
+            hour = created_dt.hour
+            dow = created_dt.weekday()
+            is_weekend = 1.0 if dow >= 5 else 0.0
+
+            ext = self.weights.get("extractor_stats", {})
+            repo_s = ext.get("repo_stats", {}).get(repo)
+            repo_rate = float(repo_s["rate"]) if repo_s else 0.0
+
+            b_stats = ext.get("branch_stats", {})
+            branch_s = b_stats.get(f"{repo}::{branch}") or b_stats.get((repo, branch))
+            if branch_s:
+                branch_rate = float(branch_s["rate"])
+                consec = float(branch_s.get("consecutive_failures", 0))
+            else:
+                branch_rate = repo_rate
+                consec = 0.0
+
+            wf_stats = ext.get("workflow_stats", {})
+            wf_s = wf_stats.get(f"{repo}::{wf}") or wf_stats.get((repo, wf))
+            wf_rate = float(wf_s["rate"]) if wf_s else 0.0
+
+            # One-hot encoding
+            ohe: List[float] = []
+            cat_features = self.weights.get(
+                "categorical_features",
+                ["repository", "branch", "workflow_name", "event"]
+            )
+            cat_categories = self.weights.get("categorical_categories", {})
+            for col in cat_features:
+                val = row.get(col, "unknown")
+                for expected in cat_categories.get(col, []):
+                    ohe.append(1.0 if val == expected else 0.0)
+
+            # Numerical standardization
+            raw_nums = [float(hour), float(dow), is_weekend, repo_rate, branch_rate, wf_rate, consec]
+            means = self.weights["numerical_scaler_means"]
+            scales = self.weights["numerical_scaler_scales"]
+            medians = self.weights.get("numerical_imputer_medians", [0.0] * len(raw_nums))
+
+            scaled: List[float] = []
+            for val, m, s, med in zip(raw_nums, means, scales, medians):
+                clean_v = med if val is None else float(val)
+                scaled.append((clean_v - m) / s)
+
+            feat_vec = ohe + scaled
+            intercept = self.weights["intercept"]
+            coefs = self.weights["coefficients"]
+            z = intercept + sum(c * x for c, x in zip(coefs, feat_vec))
+
+            prob = 1.0 / (1.0 + math.exp(-z))
+            prob_bounded = max(0.0, min(1.0, prob))
+            return round(prob_bounded, 4)
+
+        # Fallback to binary pipeline (if loaded via joblib)
+        try:
+            import pandas as pd  # lazy import
+            df = pd.DataFrame([norm_sample.iloc[0]])
+        except Exception:
+            df = norm_sample
 
         try:
             probabilities = self.pipeline.predict_proba(df)
@@ -196,13 +323,12 @@ class PipelineFailurePredictor:
         except Exception as err:
             raise RuntimeError(f"Model inference execution failed: {err}") from err
 
-        # Strictly enforce valid probability bounds [0.0, 1.0]
         prob_bounded = max(0.0, min(1.0, prob_failure))
         return round(prob_bounded, 4)
 
     def predict(
         self,
-        sample: Union[Dict[str, Any], pd.Series, pd.DataFrame],
+        sample: Any,
     ) -> Dict[str, Any]:
         """Perform comprehensive CI/CD pipeline failure risk prediction.
 
@@ -225,8 +351,8 @@ class PipelineFailurePredictor:
             ModelUnavailableError: If model is not loaded.
             InvalidPredictionInputError: If input fails validation.
         """
-        df = self.validate_and_format_input(sample)
-        prob = self.predict_proba(df)
+        norm_sample = self.validate_and_format_input(sample)
+        prob = self.predict_proba(sample)
 
         predicted_class = int(prob >= 0.5)
         is_failure = bool(predicted_class == 1)
@@ -244,9 +370,9 @@ class PipelineFailurePredictor:
         success_prob = round(float(1.0 - prob), 4)
 
         features_used = {
-            col: str(df.iloc[0][col])
+            col: str(norm_sample.iloc[0][col])
             for col in PRE_RUN_FEATURE_COLUMNS
-            if col in df.columns
+            if col in norm_sample.columns
         }
 
         return {
@@ -268,7 +394,7 @@ class PipelineFailurePredictor:
 
     def predict_safe(
         self,
-        sample: Union[Dict[str, Any], pd.Series, pd.DataFrame],
+        sample: Any,
     ) -> Dict[str, Any]:
         """Safe wrapper returning error dictionary instead of raising exceptions.
 
