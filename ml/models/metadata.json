@@ -1,0 +1,78 @@
+{
+  "model_version": "1.0.0",
+  "model_type": "LogisticRegression",
+  "created_at": "2026-10-10T16:52:52.144679+00:00",
+  "trained_at": "2026-10-10T16:52:52.133159+00:00",
+  "framework": "scikit-learn",
+  "scikit_learn_version": "1.9.1",
+  "joblib_version": "1.6.0",
+  "random_state": 42,
+  "split_type": "chronological",
+  "dataset_size": 14,
+  "train_samples": 11,
+  "test_samples": 3,
+  "raw_dataset_size": 14,
+  "exclusions_count": 0,
+  "dataset_source": "postgresql_database",
+  "dataset_snapshot_path": "postgresql://localhost:5432/cicd_platform",
+  "features": [
+    "repository",
+    "branch",
+    "workflow_name",
+    "event",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "hist_repo_failure_rate",
+    "hist_branch_failure_rate",
+    "hist_workflow_failure_rate",
+    "hist_consecutive_failures"
+  ],
+  "class_counts": {
+    "success": 6,
+    "failure": 8
+  },
+  "train_class_counts": {
+    "success": 6,
+    "failure": 5
+  },
+  "test_class_counts": {
+    "success": 0,
+    "failure": 3
+  },
+  "evaluation_metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "roc_auc": null,
+    "confusion_matrix": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        3
+      ]
+    ]
+  },
+  "accuracy": 1.0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1_score": 1.0,
+  "confusion_matrix": [
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      3
+    ]
+  ],
+  "roc_auc": null,
+  "artifact_filename": "pipeline_failure_model.joblib",
+  "artifact_sha256": "68c768b5148286c49b4be4f310ec23b8bfa33aff86e1c47c68039d018c318337",
+  "status": "success"
+}
