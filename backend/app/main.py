@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 import logging
+from pathlib import Path
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI
@@ -57,8 +58,8 @@ app.include_router(optimization_router)
 app.include_router(predictions_router)
 
 
-@app.get("/", summary="API Root", tags=["health"])
-def root() -> Dict[str, Any]:
+@app.get("/api/info", summary="API Root", tags=["health"])
+def api_info() -> Dict[str, Any]:
     """Root metadata endpoint with links to interactive API documentation."""
     return {
         "project": "CI/CD Pipeline Failure Prediction & Optimization Platform",
@@ -82,6 +83,7 @@ def root() -> Dict[str, Any]:
             "predictions": "POST /api/predictions",
             "prediction_status": "GET /api/predictions/status",
             "health": "GET /health",
+            "api_info": "GET /api/info",
         },
     }
 
@@ -102,6 +104,12 @@ def health_check() -> Dict[str, Any]:
         "status": "healthy" if db_status == "connected" else "degraded",
         "database": db_status,
     }
+
+
+# Register native static frontend integration
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DIST_DIR = PROJECT_ROOT / "dist"
+app.frontend("/", directory=str(DIST_DIR), check_dir=False)
 
 
 if __name__ == "__main__":

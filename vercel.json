@@ -4,22 +4,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.py": {
-      "includeFiles": "data/**,ml/models/**"
+      "includeFiles": "data/**,ml/models/**,dist/**"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/:match*",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/health",
-      "destination": "/api/index.py"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  }
 }
-

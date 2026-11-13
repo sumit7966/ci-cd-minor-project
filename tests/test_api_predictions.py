@@ -172,7 +172,7 @@ class TestPredictionAPI(unittest.TestCase):
 
     def test_root_metadata_lists_prediction_endpoints(self) -> None:
         """Requirement: Verify root discovery endpoint lists prediction routes."""
-        response = self.client.get("/")
+        response = self.client.get("/api/info")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         endpoints = data.get("endpoints", {})

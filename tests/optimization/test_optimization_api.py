@@ -192,7 +192,7 @@ class TestOptimizationAPI(unittest.TestCase):
     def test_unified_main_app_mounts_optimization_and_preserves_member1_routes(self) -> None:
         self._seed_db_runs()
 
-        root_res = self.main_client.get("/")
+        root_res = self.main_client.get("/api/info")
         self.assertEqual(root_res.status_code, 200)
         root_data = root_res.json()
         self.assertEqual(root_data["status"], "online")

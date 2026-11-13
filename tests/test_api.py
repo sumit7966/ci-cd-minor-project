@@ -95,12 +95,18 @@ class TestPipelineAPIs(unittest.TestCase):
         upsert_pipeline_runs(self.db, records)
 
     def test_root_endpoint(self) -> None:
-        """Verify root endpoint returns project metadata and endpoint map."""
-        response = self.client.get("/")
+        """Verify API info endpoint returns project metadata and endpoint map."""
+        response = self.client.get("/api/info")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "online")
         self.assertIn("endpoints", data)
+
+    def test_root_serves_frontend_dashboard(self) -> None:
+        """Verify root path serves frontend HTML dashboard."""
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/html", response.headers.get("content-type", ""))
 
     def test_health_endpoint(self) -> None:
         """Verify health check endpoint reports status."""
